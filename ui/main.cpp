@@ -11,6 +11,8 @@ struct MeshVertex {
 };
 
 unique_ptr<Mesh<MeshVertex>> m = nullptr;
+float voxelsizex = 0.03, voxelsizey = 0.03, voxelsizez = 0.03;
+float precision = 0.01;
 
 class Viewer : public App {
     public:
@@ -49,7 +51,7 @@ void dropCallback(GLFWwindow* window, int count, const char** paths) {
             mesh->vertices[v].z = shapes[i].mesh.positions[3*v+2];
         }
 
-        result = vx_voxelize(mesh, 0.03, 0.03, 0.03, 0.02);
+        result = vx_voxelize(mesh, voxelsizex, voxelsizey, voxelsizez, precision);
 
         INFO("Number of vertices: %ld\n", result->nvertices);
         INFO("Number of indices: %ld\n", result->nindices);
@@ -132,12 +134,13 @@ void Viewer::render(float _dt) {
 
     oglwImGuiBegin();
 
-    ImVec4 clear_color = ImColor(114, 144, 154);
     {
-        static float f = 0.0f;
-        ImGui::Text("Hello, world!");
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-        ImGui::ColorEdit3("clear color", (float*)&clear_color);
+        ImGui::Text("Press ESC to switch between GUI/Viewer mode");
+        ImGui::SliderFloat("voxel size x", &voxelsizex, 0.0f, 1.0f);
+        ImGui::SliderFloat("voxel size y", &voxelsizey, 0.0f, 1.0f);
+        ImGui::SliderFloat("voxel size z", &voxelsizez, 0.0f, 1.0f);
+        ImGui::SliderFloat("precision", &precision, 0.0f, 1.0f);
+
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
             1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
     }
