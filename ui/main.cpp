@@ -10,7 +10,7 @@ struct MeshVertex {
     glm::vec3 normal;
 };
 
-unique_ptr<Mesh<MeshVertex>> m = nullptr;
+std::vector<unique_ptr<Mesh<MeshVertex>>> meshes;
 float voxelsizex = 0.03, voxelsizey = 0.03, voxelsizez = 0.03;
 float precision = 0.01;
 
@@ -34,8 +34,10 @@ void dropCallback(GLFWwindow* window, int count, const char** paths) {
     std::vector<tinyobj::material_t> materials;
     tinyobj::LoadObj(shapes, materials, paths[0]);
 
+    meshes.clear();
+    meshes.resize(shapes.size());
+
     for (size_t i = 0; i < shapes.size(); i++) {
-        if (i == 1) { break; } // First shape for now
         vx_mesh_t* mesh;
         vx_mesh_t* result;
 
@@ -61,7 +63,7 @@ void dropCallback(GLFWwindow* window, int count, const char** paths) {
             {"normal", 3, GL_FLOAT, false, 0, AttributeLocation::normal},
         }));
 
-        m = std::make_unique<Mesh<MeshVertex>>(layout, GL_TRIANGLES);
+        meshes[i] = std::make_unique<Mesh<MeshVertex>>(layout, GL_TRIANGLES);
 
         std::vector<MeshVertex> vertices;
         std::vector<int> indices(result->indices, result->indices + result->nindices);
@@ -79,8 +81,9 @@ void dropCallback(GLFWwindow* window, int count, const char** paths) {
             });
         }
 
-        //m->addVertices(std::move(vertices), std::move(indices));
-        m->addVertices(std::move(vertices), {});
+        // FIXME: use indices somehow
+
+        meshes[i]->addVertices(std::move(vertices), {});
 
         vx_mesh_free(result);
         vx_mesh_free(mesh);
@@ -114,7 +117,7 @@ void Viewer::update(float _dt) {
 
 void Viewer::render(float _dt) {
 
-    if (m) {
+    if (meshes.size() > 0) {
         RenderState::depthWrite(GL_TRUE);
         RenderState::depthTest(GL_TRUE);
         RenderState::culling(GL_TRUE);
@@ -129,7 +132,9 @@ void Viewer::render(float _dt) {
 
         m_shader->setUniform("mvp", mvp);
 
-        m->draw(*m_shader);
+        for (auto& m : meshes) {
+            m->draw(*m_shader);
+        }
     }
 
     oglwImGuiBegin();
