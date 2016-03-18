@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
     std::vector<tinyobj::material_t> materials;
     std::string err;
     //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/bunny.obj", NULL);
-    bool ret = tinyobj::LoadObj(shapes, materials, err, "models/dragon.obj", NULL);
+    //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/dragon.obj", NULL);
     //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/suzanne.blend", NULL);
     //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/cube.obj", NULL);
 
@@ -25,6 +25,9 @@ int main(int argc, char** argv) {
     }
 
     std::ofstream file("mesh_voxelized.obj");
+
+    size_t voffset = 0;
+    size_t noffset = 0;
 
     for (size_t i = 0; i < shapes.size(); i++) {
         vx_mesh_t* mesh;
@@ -41,39 +44,54 @@ int main(int argc, char** argv) {
             mesh->vertices[v].z = shapes[i].mesh.positions[3*v+2];
         }
 
-        result = vx_voxelize(mesh, 0.03, 0.03, 0.03, 0.02);
+        result = vx_voxelize(mesh, 0.025, 0.025, 0.025, 0.1);
 
         printf("Number of vertices: %ld\n", result->nvertices);
         printf("Number of indices: %ld\n", result->nindices);
 
         if (file.is_open()) {
-            file << " " << "\n";
-            for (int i = 0; i < result->nvertices; ++i) {
-                file << "v " << result->vertices[i].x << " "
-                    <<  result->vertices[i].y << " "
-                    <<  result->vertices[i].z << "\n";
-            }
-            for (int i = 0; i < result->nnormals; ++i) {
-                file << "vn " << result->normals[i].x << " "
-                    << result->normals[i].y << " "
-                    << result->normals[i].z << "\n";
+            file << "\n";
+            file << "o " << i << "\n";
+
+            for (int j = 0; j < result->nvertices; ++j) {
+                file << "v " << result->vertices[j].x << " "
+                             << result->vertices[j].y << " "
+                             << result->vertices[j].z << "\n";
             }
 
-            for (int i = 0; i < result->nindices; i += 3) {
-                file << "f " << result->indices[i] + 1 << "//"
-                    << result->normalindices[i] + 1;
-                file << " ";
-                file << result->indices[i+1] + 1 << "//"
-                    << result->normalindices[i+1] + 1;
-                file << " ";
-                file << result->indices[i+2] + 1 << "//"
-                    << result->normalindices[i+2] + 1 << "\n";
+            for (int j = 0; j < result->nnormals; ++j) {
+                file << "vn " << result->normals[j].x << " "
+                              << result->normals[j].y << " "
+                              << result->normals[j].z << "\n";
             }
+
+            size_t max = 0;
+
+            for (int j = 0; j < result->nindices; j += 3) {
+                size_t i0 = voffset + result->indices[j+0] + 1;
+                size_t i1 = voffset + result->indices[j+1] + 1;
+                size_t i2 = voffset + result->indices[j+2] + 1;
+
+                max = i0 > max ? i0 : max;
+                max = i1 > max ? i1 : max;
+                max = i2 > max ? i2 : max;
+
+                file << "f ";
+
+                file << i0 << "//" << result->normalindices[j+0] + noffset + 1 << " ";
+                file << i1 << "//" << result->normalindices[j+1] + noffset + 1 << " ";
+                file << i2 << "//" << result->normalindices[j+2] + noffset + 1 << "\n";
+            }
+
+            voffset += max;
+            noffset += 6;
         }
 
         vx_mesh_free(result);
         vx_mesh_free(mesh);
     }
+
+    file.close();
 
     return 0;
 }
