@@ -8,13 +8,16 @@
 #include <fstream>
 
 int main(int argc, char** argv) {
+    if (argc < 4) {
+        std::cout << "Usage: " << std::endl;
+        std::cout << "\t./voxelizer file.obj resolution precision" << std::endl;
+        return EXIT_FAILURE;
+    }
+
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     std::string err;
-    //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/bunny.obj", NULL);
-    //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/dragon.obj", NULL);
-    //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/suzanne.blend", NULL);
-    //bool ret = tinyobj::LoadObj(shapes, materials, err, "models/cube.obj", NULL);
+    bool ret = tinyobj::LoadObj(shapes, materials, err, argv[1], NULL);
 
     if (!err.empty()) {
         std::cerr << err << std::endl;
@@ -24,7 +27,7 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    std::ofstream file("mesh_voxelized.obj");
+    std::ofstream file("mesh_voxelized_res.obj");
 
     size_t voffset = 0;
     size_t noffset = 0;
@@ -44,7 +47,9 @@ int main(int argc, char** argv) {
             mesh->vertices[v].z = shapes[i].mesh.positions[3*v+2];
         }
 
-        result = vx_voxelize(mesh, 0.025, 0.025, 0.025, 0.1);
+        float res = std::atof(argv[2]);
+        float precision = std::atof(argv[3]);
+        result = vx_voxelize(mesh, res, res, res, precision);
 
         printf("Number of vertices: %ld\n", result->nvertices);
         printf("Number of indices: %ld\n", result->nindices);
@@ -93,5 +98,5 @@ int main(int argc, char** argv) {
 
     file.close();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
