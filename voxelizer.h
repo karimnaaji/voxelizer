@@ -71,12 +71,12 @@ typedef struct vx_mesh {
     size_t nnormals;                // The number of normals
 } vx_mesh_t;
 
-vx_mesh_t* vx_voxelize(vx_mesh_t* _mesh,    // The input mesh
-        float voxelsizex,                   // Voxel size on X-axis
-        float voxelsizey,                   // Voxel size on Y-axis
-        float voxelsizez,                   // Voxel size on Z-axis
-        float precision);                   // A precision factor that reduces "holes" artifact
-                                            // usually a precision = voxelsize / 10. works ok.
+vx_mesh_t* vx_voxelize(vx_mesh_t const* _mesh,      // The input mesh
+        float voxelsizex,                           // Voxel size on X-axis
+        float voxelsizey,                           // Voxel size on Y-axis
+        float voxelsizez,                           // Voxel size on Z-axis
+        float precision);                           // A precision factor that reduces "holes" artifact
+                                                    // usually a precision = voxelsize / 10. works ok.
 
 void vx_mesh_free(vx_mesh_t* _mesh);
 vx_mesh_t* vx_mesh_alloc(int nindices, int nvertices);
@@ -626,7 +626,7 @@ void vx__add_voxel(vx_mesh_t* mesh,
     mesh->nvertices += 8;
 }
 
-vx_mesh_t* vx_voxelize(vx_mesh_t* m,
+vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
     float voxelsizex,
     float voxelsizey,
     float voxelsizez,
