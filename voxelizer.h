@@ -160,9 +160,14 @@ typedef struct vx_edge {
 } vx_edge_t;
 
 typedef struct vx_triangle {
-    vx_vertex_t p1;
-    vx_vertex_t p2;
-    vx_vertex_t p3;
+    union {
+        vx_vertex_t vertices[3];
+        struct {
+            vx_vertex_t p1;
+            vx_vertex_t p2;
+            vx_vertex_t p3;
+        };
+    };
 } vx_triangle_t;
 
 typedef struct vx_hash_table_node {
@@ -249,30 +254,30 @@ bool vx__hash_table_insert(vx_hash_table_t* table,
     return true;
 }
 
-void vx_mesh_free(vx_mesh_t* m)
+void vx_mesh_free(vx_mesh_t* mesh)
 {
-    VX_FREE(m->vertices);
-    m->vertices = NULL;
-    m->nvertices = 0;
-    VX_FREE(m->indices);
-    m->indices = NULL;
-    m->nindices = 0;
-    if (m->normals) { VX_FREE(m->normals); }
-    VX_FREE(m);
+    VX_FREE(mesh->vertices);
+    mesh->vertices = NULL;
+    mesh->nvertices = 0;
+    VX_FREE(mesh->indices);
+    mesh->indices = NULL;
+    mesh->nindices = 0;
+    VX_FREE(mesh->normals);
+    VX_FREE(mesh);
 }
 
 vx_mesh_t* vx_mesh_alloc(int nvertices, int nindices)
 {
-    vx_mesh_t* m = VX_MALLOC(vx_mesh_t, 1);
-    if (!m) { return NULL; }
-    m->indices = VX_CALLOC(unsigned int, nindices);
-    if (!m->indices) { return NULL; }
-    m->vertices = VX_CALLOC(vx_vertex_t, nvertices);
-    if (!m->vertices) { return NULL; }
-    m->normals = NULL;
-    m->nindices = nindices;
-    m->nvertices = nvertices;
-    return m;
+    vx_mesh_t* mesh = VX_MALLOC(vx_mesh_t, 1);
+    if (!mesh) { return NULL; }
+    mesh->indices = VX_CALLOC(unsigned int, nindices);
+    if (!mesh->indices) { return NULL; }
+    mesh->vertices = VX_CALLOC(vx_vertex_t, nvertices);
+    if (!mesh->vertices) { return NULL; }
+    mesh->normals = NULL;
+    mesh->nindices = nindices;
+    mesh->nvertices = nvertices;
+    return mesh;
 }
 
 float vx__map_to_voxel(float position, float voxelSize, bool min)
@@ -537,19 +542,12 @@ vx_aabb_t vx__triangle_aabb(vx_triangle_t* triangle)
 
     vx__aabb_init(&aabb);
 
-    aabb.max.x = VX_MAX(aabb.max.x, triangle->p1.x); aabb.max.x = VX_MAX(aabb.max.x,
-            triangle->p2.x); aabb.max.x = VX_MAX(aabb.max.x, triangle->p3.x);
-    aabb.max.y = VX_MAX(aabb.max.y, triangle->p1.y); aabb.max.y = VX_MAX(aabb.max.y,
-            triangle->p2.y); aabb.max.y = VX_MAX(aabb.max.y, triangle->p3.y);
-    aabb.max.z = VX_MAX(aabb.max.z, triangle->p1.z); aabb.max.z = VX_MAX(aabb.max.z,
-            triangle->p2.z); aabb.max.z = VX_MAX(aabb.max.z, triangle->p3.z);
-
-    aabb.min.x = VX_MIN(aabb.min.x, triangle->p1.x); aabb.min.x = VX_MIN(aabb.min.x,
-            triangle->p2.x); aabb.min.x = VX_MIN(aabb.min.x, triangle->p3.x);
-    aabb.min.y = VX_MIN(aabb.min.y, triangle->p1.y); aabb.min.y = VX_MIN(aabb.min.y,
-            triangle->p2.y); aabb.min.y = VX_MIN(aabb.min.y, triangle->p3.y);
-    aabb.min.z = VX_MIN(aabb.min.z, triangle->p1.z); aabb.min.z = VX_MIN(aabb.min.z,
-            triangle->p2.z); aabb.min.z = VX_MIN(aabb.min.z, triangle->p3.z);
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            aabb.max.v[i] = VX_MAX(aabb.max.v[i], triangle->vertices[j].v[i]);
+            aabb.min.v[i] = VX_MIN(aabb.min.v[i], triangle->vertices[j].v[i]);
+        }
+    }
 
     return aabb;
 }
