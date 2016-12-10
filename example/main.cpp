@@ -7,6 +7,9 @@
 #include <sstream>
 #include <fstream>
 
+//#define TRIANGULATE
+#define POINT_CLOUD
+
 int main(int argc, char** argv) {
     if (argc < 4) {
         std::cout << "Usage: " << std::endl;
@@ -27,14 +30,19 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+#ifdef TRIANGULATE
     std::ofstream file("mesh_voxelized_res.obj");
+#endif
+
+#ifdef POINT_CLOUD
+    std::ofstream file("mesh_voxelized_res.txt");
+#endif
 
     size_t voffset = 0;
     size_t noffset = 0;
 
     for (size_t i = 0; i < shapes.size(); i++) {
         vx_mesh_t* mesh;
-        vx_mesh_t* result;
 
         mesh = vx_mesh_alloc(shapes[i].mesh.positions.size(), shapes[i].mesh.indices.size());
 
@@ -49,6 +57,9 @@ int main(int argc, char** argv) {
 
         float res = std::atof(argv[2]);
         float precision = std::atof(argv[3]);
+
+#ifdef TRIANGULATE
+        vx_mesh_t* result;
         result = vx_voxelize(mesh, res, res, res, precision);
 
         printf("Number of vertices: %ld\n", result->nvertices);
@@ -94,6 +105,26 @@ int main(int argc, char** argv) {
 
         vx_mesh_free(result);
         vx_mesh_free(mesh);
+#endif
+
+#ifdef POINT_CLOUD
+        vx_point_cloud_t* result;
+        result = vx_voxelize_pc(mesh, res, res, res, precision);
+
+        printf("Number of vertices: %ld\n", result->nvertices);
+
+        if (file.is_open()) {
+            file << "\n";
+            for (int j = 0; j < result->nvertices; ++j) {
+                file << result->vertices[j].x << " "
+                     << result->vertices[j].y << " "
+                     << result->vertices[j].z << "\n";
+            }
+        }
+
+        vx_point_cloud_free(result);
+        vx_mesh_free(mesh);
+#endif
     }
 
     file.close();
