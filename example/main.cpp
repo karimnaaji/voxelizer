@@ -7,7 +7,7 @@
 #include <sstream>
 #include <fstream>
 
-//#define TRIANGULATE
+#define TRIANGULATE
 #define POINT_CLOUD
 
 int main(int argc, char** argv) {
