@@ -31,7 +31,8 @@
 //  #include "voxelizer.h"
 //
 // HISTORY:
-//  - 0.9.1 (12-10-2016):
+//  - 0.9.1 (12-10-2016): Add vx_voxelize_pc to generate point cloud as a result
+//                        of voxelization
 //  - 0.9   (01-05-2016): Initial
 //
 // TODO:
@@ -75,15 +76,17 @@ typedef struct vx_mesh {
 } vx_mesh_t;
 
 typedef struct vx_point_cloud {
-    vx_vertex_t* vertices;
-    size_t nvertices;
+    vx_vertex_t* vertices;          // Contiguous point cloud vertices, each vertex corresponds to
+                                    // the center of a voxel
+    size_t nvertices;               // The number of vertices in the point cloud
 } vx_point_cloud_t;
 
-vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
-                                 float voxelsizex,
-                                 float voxelsizey,
-                                 float voxelsizez,
-                                 float precision);
+vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh, // The input mesh
+                                 float voxelsizex,      // Voxel size on X-axis
+                                 float voxelsizey,      // Voxel size on Y-axis
+                                 float voxelsizez,      // Voxel size on Z-axis
+                                 float precision);      // A precision factor that reduces "holes artifact
+                                                        // usually a precision = voxelsize / 10. works ok
 
 vx_mesh_t* vx_voxelize(vx_mesh_t const* _mesh,      // The input mesh
         float voxelsizex,                           // Voxel size on X-axis
