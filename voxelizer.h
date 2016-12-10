@@ -31,7 +31,8 @@
 //  #include "voxelizer.h"
 //
 // HISTORY:
-//  - version 0.9.0: Initial
+//  - 0.9.1 (12-10-2016):
+//  - 0.9   (01-05-2016): Initial
 //
 // TODO:
 //  - Triangle face merging
@@ -71,6 +72,17 @@ typedef struct vx_mesh {
     size_t nnormals;                // The number of normals
 } vx_mesh_t;
 
+typedef struct vx_point_cloud {
+    vx_vertex_t* vertices;
+    size_t nvertices;
+} vx_point_cloud_t;
+
+vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
+                                 float voxelsizex,
+                                 float voxelsizey,
+                                 float voxelsizez,
+                                 float precision);
+
 vx_mesh_t* vx_voxelize(vx_mesh_t const* _mesh,      // The input mesh
         float voxelsizex,                           // Voxel size on X-axis
         float voxelsizey,                           // Voxel size on Y-axis
@@ -78,7 +90,8 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* _mesh,      // The input mesh
         float precision);                           // A precision factor that reduces "holes" artifact
                                                     // usually a precision = voxelsize / 10. works ok.
 
-void vx_mesh_free(vx_mesh_t* _mesh);
+void vx_mesh_free(vx_mesh_t* mesh);
+void vx_point_cloud_free(vx_point_cloud_t* pointcloud);
 vx_mesh_t* vx_mesh_alloc(int nindices, int nvertices);
 
 // Voxelizer Helpers, define your own if needed
@@ -264,6 +277,13 @@ void vx_mesh_free(vx_mesh_t* mesh)
     mesh->nindices = 0;
     VX_FREE(mesh->normals);
     VX_FREE(mesh);
+}
+
+void vx_point_cloud_free(vx_point_cloud_t* pc)
+{
+    VX_FREE(pc->vertices);
+    pc->vertices = 0;
+    VX_FREE(pc);
 }
 
 vx_mesh_t* vx_mesh_alloc(int nvertices, int nindices)
@@ -624,19 +644,13 @@ void vx__add_voxel(vx_mesh_t* mesh,
     mesh->nvertices += 8;
 }
 
-vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
-    float voxelsizex,
-    float voxelsizey,
-    float voxelsizez,
-    float precision)
+vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
+    vx_vertex_t vs,
+    vx_vertex_t hvs,
+    float precision,
+    size_t* nvoxels)
 {
-    vx_mesh_t* outmesh = NULL;
     vx_hash_table_t* table = NULL;
-    size_t voxels = 0;
-
-    float halfsizex = voxelsizex * 0.5f;
-    float halfsizey = voxelsizey * 0.5f;
-    float halfsizez = voxelsizez * 0.5f;
 
     table = vx__hash_table_alloc(VOXELIZER_HASH_TABLE_SIZE);
 
@@ -658,25 +672,25 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
 
         vx_aabb_t aabb = vx__triangle_aabb(&triangle);
 
-        aabb.min.x = vx__map_to_voxel(aabb.min.x, voxelsizex, true);
-        aabb.min.y = vx__map_to_voxel(aabb.min.y, voxelsizey, true);
-        aabb.min.z = vx__map_to_voxel(aabb.min.z, voxelsizez, true);
+        aabb.min.x = vx__map_to_voxel(aabb.min.x, vs.x, true);
+        aabb.min.y = vx__map_to_voxel(aabb.min.y, vs.y, true);
+        aabb.min.z = vx__map_to_voxel(aabb.min.z, vs.z, true);
 
-        aabb.max.x = vx__map_to_voxel(aabb.max.x, voxelsizex, false);
-        aabb.max.y = vx__map_to_voxel(aabb.max.y, voxelsizey, false);
-        aabb.max.z = vx__map_to_voxel(aabb.max.z, voxelsizez, false);
+        aabb.max.x = vx__map_to_voxel(aabb.max.x, vs.x, false);
+        aabb.max.y = vx__map_to_voxel(aabb.max.y, vs.y, false);
+        aabb.max.z = vx__map_to_voxel(aabb.max.z, vs.z, false);
 
-        for (float x = aabb.min.x; x < aabb.max.x; x += voxelsizex) {
-            for (float y = aabb.min.y; y < aabb.max.y; y += voxelsizey) {
-                for (float z = aabb.min.z; z < aabb.max.z; z += voxelsizez) {
+        for (float x = aabb.min.x; x < aabb.max.x; x += vs.x) {
+            for (float y = aabb.min.y; y < aabb.max.y; y += vs.y) {
+                for (float z = aabb.min.z; z < aabb.max.z; z += vs.z) {
                     vx_aabb_t saabb;
 
-                    saabb.min.x = x - halfsizex;
-                    saabb.min.y = y - halfsizey;
-                    saabb.min.z = z - halfsizez;
-                    saabb.max.x = x + halfsizex;
-                    saabb.max.y = y + halfsizey;
-                    saabb.max.z = z + halfsizez;
+                    saabb.min.x = x - hvs.x;
+                    saabb.min.y = y - hvs.y;
+                    saabb.min.z = z - hvs.z;
+                    saabb.max.x = x + hvs.x;
+                    saabb.max.y = y + hvs.y;
+                    saabb.max.z = z + hvs.z;
 
                     vx_vertex_t boxcenter = vx__aabb_center(&saabb);
                     vx_vertex_t halfsize = vx__aabb_half_size(&saabb);
@@ -699,13 +713,33 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
                                 vx__vertex_comp_func);
 
                         if (insert) {
-                            voxels++;
+                            (*nvoxels)++;
                         }
                    }
                 }
             }
         }
     }
+
+    return table;
+}
+
+vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
+    float voxelsizex,
+    float voxelsizey,
+    float voxelsizez,
+    float precision)
+{
+    vx_mesh_t* outmesh = NULL;
+    vx_hash_table_t* table = NULL;
+    size_t voxels = 0;
+
+    vx_vertex_t vs = {voxelsizex, voxelsizey, voxelsizez};
+    vx_vertex_t hvs = vs;
+
+    vx__vertex_multiply(&hvs, 0.5f);
+
+    table = vx__voxelize(m, vs, hvs, precision, &voxels);
 
     outmesh = VX_MALLOC(vx_mesh_t, 1);
     size_t nvertices = voxels * 8;
@@ -721,23 +755,21 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
     memcpy(outmesh->normals, vx_normals, 18 * sizeof(float));
 
     float vertices[24] = {
-        -halfsizex,  halfsizey,  halfsizez,
-        -halfsizex, -halfsizey,  halfsizez,
-         halfsizex, -halfsizey,  halfsizez,
-         halfsizex,  halfsizey,  halfsizez,
-        -halfsizex,  halfsizey, -halfsizez,
-        -halfsizex, -halfsizey, -halfsizez,
-         halfsizex, -halfsizey, -halfsizez,
-         halfsizex,  halfsizey, -halfsizez,
+        -hvs.x,  hvs.y,  hvs.z,
+        -hvs.x, -hvs.y,  hvs.z,
+         hvs.x, -hvs.y,  hvs.z,
+         hvs.x,  hvs.y,  hvs.z,
+        -hvs.x,  hvs.y, -hvs.z,
+        -hvs.x, -hvs.y, -hvs.z,
+         hvs.x, -hvs.y, -hvs.z,
+         hvs.x,  hvs.y, -hvs.z,
     };
 
     for (size_t i = 0; i < table->size; ++i) {
         if (table->elements[i] != NULL) {
             vx_hash_table_node_t* node = table->elements[i];
 
-            if (!node) {
-                continue;
-            }
+            if (!node) { continue; }
 
             vx_vertex_t* p = (vx_vertex_t*) node->data;
             vx__add_voxel(outmesh, p, vertices);
@@ -753,6 +785,48 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
     vx__hash_table_free(table, true);
 
     return outmesh;
+}
+
+vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
+    float voxelsizex,
+    float voxelsizey,
+    float voxelsizez,
+    float precision)
+{
+    vx_point_cloud_t* pc = NULL;
+    vx_hash_table_t* table = NULL;
+    size_t voxels = 0;
+
+    vx_vertex_t vs = {voxelsizex, voxelsizey, voxelsizez};
+    vx_vertex_t hvs = vs;
+
+    vx__vertex_multiply(&hvs, 0.5f);
+
+    table = vx__voxelize(mesh, vs, hvs, precision, &voxels);
+
+    pc = VX_MALLOC(vx_point_cloud_t, 1);
+    pc->vertices = VX_MALLOC(vx_vertex_t, voxels);
+    pc->nvertices = 0;
+
+    for (size_t i = 0; i < table->size; ++i) {
+        if (table->elements[i] != NULL) {
+            vx_hash_table_node_t* node = table->elements[i];
+
+            if (!node) { continue; }
+
+            pc->vertices[pc->nvertices] = *((vx_vertex_t*) node->data);
+            pc->nvertices++;
+
+            while (node->next) {
+                node = node->next;
+                pc->vertices[pc->nvertices] = *((vx_vertex_t*) node->data);
+                pc->nvertices++;
+            }
+        }
+    }
+
+    vx__hash_table_free(table, true);
+    return pc;
 }
 
 #undef VOXELIZER_EPSILON
