@@ -31,6 +31,8 @@
 //  #include "voxelizer.h"
 //
 // HISTORY:
+//  - 0.9.2 (03-01-2017): Fix triangle bounding bouxes bounds for bbox-triangle
+//                        intersection test
 //  - 0.9.1 (12-10-2016): Add vx_voxelize_pc to generate point cloud as a result
 //                        of voxelization
 //  - 0.9   (01-05-2016): Initial
@@ -685,9 +687,9 @@ vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
         aabb.max.y = vx__map_to_voxel(aabb.max.y, vs.y, false);
         aabb.max.z = vx__map_to_voxel(aabb.max.z, vs.z, false);
 
-        for (float x = aabb.min.x; x < aabb.max.x; x += vs.x) {
-            for (float y = aabb.min.y; y < aabb.max.y; y += vs.y) {
-                for (float z = aabb.min.z; z < aabb.max.z; z += vs.z) {
+        for (float x = aabb.min.x; x <= aabb.max.x; x += vs.x) {
+            for (float y = aabb.min.y; y <= aabb.max.y; y += vs.y) {
+                for (float z = aabb.min.z; z <= aabb.max.z; z += vs.z) {
                     vx_aabb_t saabb;
 
                     saabb.min.x = x - hvs.x;
