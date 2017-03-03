@@ -214,7 +214,7 @@ vx_hash_table_t* vx__hash_table_alloc(size_t size)
     return table;
 }
 
-void vx__hash_table_free(vx_hash_table_t* table, bool freedata)
+void vx__hash_table_free(vx_hash_table_t* table)
 {
     for (size_t i = 0; i < table->size; ++i) {
         vx_hash_table_node_t* node = table->elements[i];
@@ -223,9 +223,7 @@ void vx__hash_table_free(vx_hash_table_t* table, bool freedata)
             if (node->next) {
                 while (node->next) {
                     node = node->next;
-                    if (freedata) {
-                        VX_FREE(node->prev->data);
-                    }
+                    VX_FREE(node->prev->data);
                     VX_FREE(node->prev);
                 }
                 VX_FREE(node);
@@ -789,7 +787,7 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
         }
     }
 
-    vx__hash_table_free(table, true);
+    vx__hash_table_free(table);
 
     return outmesh;
 }
@@ -832,7 +830,7 @@ vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
         }
     }
 
-    vx__hash_table_free(table, true);
+    vx__hash_table_free(table);
     return pc;
 }
 
