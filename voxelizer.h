@@ -1061,6 +1061,7 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* m,
 
     VX_FREE(aabb);
     VX_FREE(meshaabb);
+    vx_point_cloud_free(pc);
 
     return data;
 }
