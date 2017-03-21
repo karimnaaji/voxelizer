@@ -87,6 +87,7 @@ typedef struct vx_point_cloud {
     vx_vertex_t* vertices;          // Contiguous point cloud vertices positions, each vertex corresponds
                                     // to the center of a voxel
     vx_color_t* colors;             // Contiguous point cloud vertices colors
+    vx_vec3_t* normals;
     size_t nvertices;               // The number of vertices in the point cloud
 } vx_point_cloud_t;
 
@@ -117,9 +118,6 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* mesh, // The input mesh
 
 // Allocates a mesh that can contain nvertices vertices, nindices indices
 vx_mesh_t* vx_mesh_alloc(int nvertices, int nindices);
-
-// Allocates a mesh that can contain nvertices vertices and colors, nindices indices
-vx_mesh_t* vx_color_mesh_alloc(int nvertices, int nindices);
 
 // Free a mesh allocated with vx_mesh_alloc, vx_color_mesh_alloc or after a call to vx_voxelize
 void vx_mesh_free(vx_mesh_t* mesh);
@@ -215,6 +213,7 @@ typedef struct vx_triangle {
         };
     };
     vx_color_t colors[3];
+    vx_vec3_t normals[3];
 } vx_triangle_t;
 
 typedef struct vx_hash_table_node {
@@ -231,7 +230,84 @@ typedef struct vx_hash_table {
 typedef struct vx_voxel_data {
     vx_vec3_t position;
     vx_color_t color;
+    vx_vec3_t normal;
 } vx_voxel_data_t;
+
+void vx__vec3_sub(vx_vec3_t* a, vx_vec3_t* b)
+{
+    a->x -= b->x;
+    a->y -= b->y;
+    a->z -= b->z;
+}
+
+float vx__vec3_length2(vx_vec3_t* v)
+{
+    return v->x * v->x + v->y * v->y + v->z * v->z;
+}
+
+void vx__vec3_add(vx_vec3_t* a, vx_vec3_t* b)
+{
+    a->x += b->x;
+    a->y += b->y;
+    a->z += b->z;
+}
+
+void vx__vec3_multiply(vx_vec3_t* a, float v)
+{
+    a->x *= v;
+    a->y *= v;
+    a->z *= v;
+}
+
+float vx__vec3_dot(vx_vec3_t* v1, vx_vec3_t* v2)
+{
+    return v1->x * v2->x + v1->y * v2->y + v1->z * v2->z;
+}
+
+unsigned int vx__rgbaf32_to_rgba8888(float rgba[4])
+{
+    unsigned int color =
+       (((unsigned int)(255.0f * rgba[0]) & 0xff) << 24) |
+       (((unsigned int)(255.0f * rgba[1]) & 0xff) << 16) |
+       (((unsigned int)(255.0f * rgba[2]) & 0xff) <<  8) |
+       (((unsigned int)(255.0f * rgba[3]) & 0xff) <<  0);
+    return color;
+}
+
+void vx__rgba8888_to_rgbaf32(unsigned int rgba8888, float (*rgbaf32)[4])
+{
+    (*rgbaf32)[0] = ((rgba8888 >> 24) & 0xff) / 255.0f;
+    (*rgbaf32)[1] = ((rgba8888 >> 16) & 0xff) / 255.0f;
+    (*rgbaf32)[2] = ((rgba8888 >>  8) & 0xff) / 255.0f;
+    (*rgbaf32)[3] = ((rgba8888 >>  0) & 0xff) / 255.0f;
+}
+
+unsigned int vx__mix05(unsigned int rgba88880,
+    unsigned int rgba88881)
+{
+    float rgba0[4];
+    float rgba1[4];
+    float out[4];
+
+    vx__rgba8888_to_rgbaf32(rgba88880, &rgba0);
+    vx__rgba8888_to_rgbaf32(rgba88881, &rgba1);
+
+    for (int i = 0; i < 4; ++i) {
+        out[i] = rgba0[i] * 0.5f + rgba1[i] * 0.5f;
+    }
+
+    return vx__rgbaf32_to_rgba8888(out);
+}
+
+vx_vec3_t vx__mix05(vx_vec3_t v0, vx_vec3_t v1)
+{
+    vx__vec3_multiply(&v0, 0.5f);
+    vx__vec3_multiply(&v1, 0.5f);
+
+    vx__vec3_add(&v0, &v1);
+
+    return v0;
+}
 
 vx_hash_table_t* vx__hash_table_alloc(size_t size)
 {
@@ -310,6 +386,7 @@ void vx_mesh_free(vx_mesh_t* mesh)
     mesh->indices = NULL;
     mesh->nindices = 0;
     VX_FREE(mesh->normals);
+    mesh->normals = NULL;
     VX_FREE(mesh->colors);
     mesh->colors = NULL;
     VX_FREE(mesh);
@@ -330,18 +407,10 @@ vx_mesh_t* vx_mesh_alloc(int nvertices, int nindices)
     vx_mesh_t* mesh = VX_MALLOC(vx_mesh_t, 1);
     mesh->indices = VX_CALLOC(unsigned int, nindices);
     mesh->vertices = VX_CALLOC(vx_vertex_t, nvertices);
-    mesh->normals = NULL;
-    mesh->colors = NULL;
+    mesh->normals = VX_CALLOC(vx_vec3_t, nvertices);
+    mesh->colors = VX_CALLOC(vx_color_t, nvertices);
     mesh->nindices = nindices;
     mesh->nvertices = nvertices;
-    return mesh;
-}
-
-vx_mesh_t* vx_color_mesh_alloc(int nvertices, int nindices)
-{
-    vx_mesh_t* mesh = vx_mesh_alloc(nvertices, nindices);
-    mesh->colors = VX_CALLOC(vx_color_t, nvertices);
-    if (!mesh->colors) { return NULL; }
     return mesh;
 }
 
@@ -366,40 +435,20 @@ bool vx__vertex_equals_epsilon(vx_vertex_t* v1, vx_vertex_t* v2) {
            fabs(v1->z - v2->z) < VOXELIZER_EPSILON;
 }
 
-bool vx__vertex_comp_func(void* a, void* b)
+bool vx__compare_node_data(void* a, void* b)
 {
-    return vx__vertex_equals_epsilon((vx_vertex_t*) a, (vx_vertex_t*) b);
-}
+    vx_voxel_data_t* data1 = (vx_voxel_data_t*)a;
+    vx_voxel_data_t* data2 = (vx_voxel_data_t*)b;
 
-void vx__vec3_sub(vx_vec3_t* a, vx_vec3_t* b)
-{
-    a->x -= b->x;
-    a->y -= b->y;
-    a->z -= b->z;
-}
+    bool equals = vx__vertex_equals_epsilon(&data1->position, &data2->position);
 
-float vx__vec3_length2(vx_vec3_t* v)
-{
-    return v->x * v->x + v->y * v->y + v->z * v->z;
-}
+    if (equals) {
+        // Add contribution from normal and color
+        data1->color = vx__mix05(data1->color, data2->color);
+        data1->normal = vx__mix05(data1->normal, data2->normal);
+    }
 
-void vx__vec3_add(vx_vec3_t* a, vx_vec3_t* b)
-{
-    a->x += b->x;
-    a->y += b->y;
-    a->z += b->z;
-}
-
-void vx__vec3_multiply(vx_vec3_t* a, float v)
-{
-    a->x *= v;
-    a->y *= v;
-    a->z *= v;
-}
-
-float vx__vec3_dot(vx_vec3_t* v1, vx_vec3_t* v2)
-{
-    return v1->x * v2->x + v1->y * v2->y + v1->z * v2->z;
+    return equals;
 }
 
 int vx__plane_box_overlap(vx_vec3_t* normal,
@@ -678,11 +727,9 @@ void vx__add_voxel(vx_mesh_t* mesh,
         mesh->vertices[index].y = vertices[i*3+1] + pos->y;
         mesh->vertices[index].z = vertices[i*3+2] + pos->z;
 
-        if (mesh->colors) {
-            mesh->colors[index].r = color.r;
-            mesh->colors[index].g = color.g;
-            mesh->colors[index].b = color.b;
-        }
+        mesh->colors[index].r = color.r;
+        mesh->colors[index].g = color.g;
+        mesh->colors[index].b = color.b;
     }
 
     int j = -1;
@@ -701,6 +748,47 @@ void vx__add_voxel(vx_mesh_t* mesh,
     mesh->nvertices += 8;
 }
 
+vx_vec3_t vx__barycentric_interpolation_weights(vx_triangle_t triangle,
+    vx_vertex_t boxcenter)
+{
+    float invarea;
+    float a1, a2, a3;
+    vx_vec3_t v1, v2, v3;
+
+    v1 = triangle.p1;
+    v2 = triangle.p2;
+    v3 = triangle.p3;
+
+    vx_triangle_t t1 = {v1, v2, boxcenter};
+    vx_triangle_t t2 = {v2, v3, boxcenter};
+    vx_triangle_t t3 = {v3, v1, boxcenter};
+
+    a1 = vx__triangle_area(&t1);
+    a2 = vx__triangle_area(&t2);
+    a3 = vx__triangle_area(&t3);
+
+    invarea = 1.0f / (a1 + a2 + a3);
+
+    vx_vec3_t weights = {a2 * invarea, a3 * invarea, a1 * invarea};
+
+    return weights;
+}
+
+vx_vec3_t vx__apply_barycentric_weights(vx_vec3_t weights,
+    vx_color_t v1,
+    vx_color_t v2,
+    vx_color_t v3)
+{
+    vx__vec3_multiply(&v1, weights.x);
+    vx__vec3_multiply(&v2, weights.y);
+    vx__vec3_multiply(&v3, weights.z);
+
+    vx__vec3_add(&v1, &v2);
+    vx__vec3_add(&v1, &v3);
+
+    return v1;
+}
+
 vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
     vx_vertex_t vs,
     vx_vertex_t hvs,
@@ -713,24 +801,17 @@ vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
 
     for (int i = 0; i < m->nindices; i += 3) {
         vx_triangle_t triangle;
-        unsigned int i1, i2, i3;
 
         VX_ASSERT(m->indices[i+0] < m->nvertices);
         VX_ASSERT(m->indices[i+1] < m->nvertices);
         VX_ASSERT(m->indices[i+2] < m->nvertices);
 
-        i1 = m->indices[i+0];
-        i2 = m->indices[i+1];
-        i3 = m->indices[i+2];
+        for (int indice = 0; indice < 3; indice++) {
+            unsigned int j = m->indices[i+indice];
 
-        triangle.p1 = m->vertices[i1];
-        triangle.p2 = m->vertices[i2];
-        triangle.p3 = m->vertices[i3];
-
-        if (m->colors) {
-            triangle.colors[0] = m->colors[i1];
-            triangle.colors[1] = m->colors[i2];
-            triangle.colors[2] = m->colors[i3];
+            triangle.vertices[indice] = m->vertices[j];
+            triangle.colors[indice] = m->colors[j];
+            triangle.normals[indice] = m->normals[j];
         }
 
         if (vx__triangle_area(&triangle) < VOXELIZER_EPSILON) {
@@ -769,57 +850,35 @@ vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
                     halfsize.y += precision;
                     halfsize.z += precision;
 
-                    if (vx__triangle_box_overlap(boxcenter, halfsize, triangle)) {
-                        vx_vec3_t v1, v2, v3;
-                        vx_color_t c1, c2, c3;
-                        vx_voxel_data_t* nodedata;
-                        float a1, a2, a3;
-                        float area;
-                        float norm;
+                    if (!vx__triangle_box_overlap(boxcenter, halfsize, triangle)) {
+                        continue;
+                    }
 
-                        nodedata = VX_MALLOC(vx_voxel_data_t, 1);
+                    vx_voxel_data_t* nodedata;
 
-                        if (m->colors != NULL) {
-                            // Perform barycentric interpolation of colors
-                            v1 = triangle.p1;
-                            v2 = triangle.p2;
-                            v3 = triangle.p3;
+                    nodedata = VX_MALLOC(vx_voxel_data_t, 1);
 
-                            c1 = triangle.colors[0];
-                            c2 = triangle.colors[1];
-                            c3 = triangle.colors[2];
+                    vx_vec3_t weights = vx__barycentric_interpolation_weights(triangle, boxcenter);
 
-                            vx_triangle_t t1 = {v1, v2, boxcenter};
-                            vx_triangle_t t2 = {v2, v3, boxcenter};
-                            vx_triangle_t t3 = {v3, v1, boxcenter};
+                    vx_color_t color = vx__apply_barycentric_weights(weights,
+                        triangle.colors[0],
+                        triangle.colors[1],
+                        triangle.colors[2]);
 
-                            a1 = vx__triangle_area(&t1);
-                            a2 = vx__triangle_area(&t2);
-                            a3 = vx__triangle_area(&t3);
+                    vx_vec3_t normal = vx__apply_barycentric_weights(weights,
+                        triangle.normals[0],
+                        triangle.normals[1],
+                        triangle.normals[2]);
 
-                            area = a1 + a2 + a3;
+                    nodedata->color = color;
+                    nodedata->normal = normal;
+                    nodedata->position = boxcenter;
 
-                            vx__vec3_multiply(&c1, a2 / area);
-                            vx__vec3_multiply(&c2, a3 / area);
-                            vx__vec3_multiply(&c3, a1 / area);
+                    size_t hash = vx__vertex_hash(boxcenter, VOXELIZER_HASH_TABLE_SIZE);
 
-                            vx__vec3_add(&c1, &c2);
-                            vx__vec3_add(&c1, &c3);
-
-                            nodedata->color = c1;
-                        }
-
-                        nodedata->position = boxcenter;
-
-                        size_t hash = vx__vertex_hash(boxcenter, VOXELIZER_HASH_TABLE_SIZE);
-
-                        bool insert = vx__hash_table_insert(table, hash, nodedata,
-                                vx__vertex_comp_func);
-
-                        if (insert) {
-                            (*nvoxels)++;
-                        }
-                   }
+                    if (vx__hash_table_insert(table, hash, nodedata, vx__compare_node_data)) {
+                        (*nvoxels)++;
+                    }
                 }
             }
         }
@@ -851,7 +910,7 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* m,
     outmesh->nnormals = VOXELIZER_NORMAL_INDICES_SIZE;
     outmesh->vertices = VX_CALLOC(vx_vertex_t, nvertices);
     outmesh->normals = VX_CALLOC(vx_vec3_t, 6);
-    outmesh->colors = m->colors != NULL ? VX_CALLOC(vx_color_t, nvertices) : NULL;
+    outmesh->colors = VX_CALLOC(vx_color_t, nvertices);
     outmesh->indices = VX_CALLOC(unsigned int, nindices);
     outmesh->normalindices = VX_CALLOC(unsigned int, nindices);
     outmesh->nindices = 0;
@@ -907,7 +966,8 @@ vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
 
     pc = VX_MALLOC(vx_point_cloud_t, 1);
     pc->vertices = VX_MALLOC(vx_vec3_t, voxels);
-    pc->colors = mesh->colors != NULL ? VX_MALLOC(vx_color_t, voxels) : NULL;
+    pc->colors = VX_MALLOC(vx_color_t, voxels);
+    pc->normals = VX_MALLOC(vx_vec3_t, voxels);
     pc->nvertices = 0;
 
     for (size_t i = 0; i < table->size; ++i) {
@@ -918,7 +978,9 @@ vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
 
         while (node) {
             voxeldata = (vx_voxel_data_t*) node->data;
-            if (pc->colors) { pc->colors[pc->nvertices] = voxeldata->color; }
+
+            pc->colors[pc->nvertices] = voxeldata->color;
+            pc->normals[pc->nvertices] = voxeldata->normal;
             pc->vertices[pc->nvertices++] = voxeldata->position;
 
             node = node->next;
@@ -926,42 +988,8 @@ vx_point_cloud_t* vx_voxelize_pc(vx_mesh_t const* mesh,
     }
 
     vx__hash_table_free(table);
+
     return pc;
-}
-
-unsigned int vx__rgbaf32_to_rgba8888(float rgba[4])
-{
-    unsigned int color =
-       (((unsigned int)(255.0f * rgba[0]) & 0xff) << 24) |
-       (((unsigned int)(255.0f * rgba[1]) & 0xff) << 16) |
-       (((unsigned int)(255.0f * rgba[2]) & 0xff) <<  8) |
-       (((unsigned int)(255.0f * rgba[3]) & 0xff) <<  0);
-    return color;
-}
-
-void vx__rgba8888_to_rgbaf32(unsigned int rgba8888, float (*rgbaf32)[4])
-{
-    (*rgbaf32)[0] = ((rgba8888 >> 24) & 0xff) / 255.0f;
-    (*rgbaf32)[1] = ((rgba8888 >> 16) & 0xff) / 255.0f;
-    (*rgbaf32)[2] = ((rgba8888 >>  8) & 0xff) / 255.0f;
-    (*rgbaf32)[3] = ((rgba8888 >>  0) & 0xff) / 255.0f;
-}
-
-unsigned int vx__mix(unsigned int rgba88880,
-    unsigned int rgba88881)
-{
-    float rgba0[4];
-    float rgba1[4];
-    float out[4];
-
-    vx__rgba8888_to_rgbaf32(rgba88880, &rgba0);
-    vx__rgba8888_to_rgbaf32(rgba88881, &rgba1);
-
-    for (int i = 0; i < 4; ++i) {
-        out[i] = rgba0[i] * 0.5f + rgba1[i] * 0.5f;
-    }
-
-    return vx__rgbaf32_to_rgba8888(out);
 }
 
 unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* m,
@@ -972,8 +1000,6 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* m,
     vx_aabb_t* aabb = NULL;
     vx_aabb_t* meshaabb = NULL;
     float ax, ay, az;
-
-    VX_ASSERT(m->colors);
 
     for (size_t i = 0; i < m->nindices; i += 3) {
         vx_triangle_t triangle;
@@ -1053,7 +1079,7 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* m,
         index = ix + iy * width + iz * (width * height);
 
         if (data[index] != 0) {
-            data[index] = vx__mix(color, data[index]);
+            data[index] = vx__mix05(color, data[index]);
         } else {
             data[index] = color;
         }
