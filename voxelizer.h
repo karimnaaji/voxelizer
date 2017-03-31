@@ -803,6 +803,8 @@ vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
     float precision,
     size_t* nvoxels)
 {
+    VX_ASSERT(vs.x != 0.0 && vs.y != 0.0 && vs.z != 0.0);
+
     vx_hash_table_t* table = NULL;
 
     table = vx__hash_table_alloc(VOXELIZER_HASH_TABLE_SIZE);
@@ -1041,6 +1043,10 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* m,
     float resx = (meshaabb->max.x - meshaabb->min.x) / width;
     float resy = (meshaabb->max.y - meshaabb->min.y) / height;
     float resz = (meshaabb->max.z - meshaabb->min.z) / depth;
+
+    if (resx == 0.0) { resx = (resy + resz) / 2.0f; }
+    if (resy == 0.0) { resy = (resx + resz) / 2.0f; }
+    if (resz == 0.0) { resz = (resx + resy) / 2.0f; }
 
     vx_point_cloud_t* pc = vx_voxelize_pc(m, resx, resy, resz, 0.0);
 
