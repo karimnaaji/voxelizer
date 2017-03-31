@@ -270,39 +270,39 @@ float vx__vec3_dot(vx_vec3_t* v1, vx_vec3_t* v2)
     return v1->x * v2->x + v1->y * v2->y + v1->z * v2->z;
 }
 
-unsigned int vx__rgbaf32_to_rgba8888(float rgba[4])
+unsigned int vx__rgbaf32_to_abgr8888(float rgba[4])
 {
     unsigned int color =
-       (((unsigned int)(255.0f * rgba[0]) & 0xff) << 24) |
-       (((unsigned int)(255.0f * rgba[1]) & 0xff) << 16) |
-       (((unsigned int)(255.0f * rgba[2]) & 0xff) <<  8) |
-       (((unsigned int)(255.0f * rgba[3]) & 0xff) <<  0);
+       (((unsigned int)(255.0f * rgba[3]) & 0xff) << 24) |
+       (((unsigned int)(255.0f * rgba[2]) & 0xff) << 16) |
+       (((unsigned int)(255.0f * rgba[1]) & 0xff) <<  8) |
+       (((unsigned int)(255.0f * rgba[0]) & 0xff) <<  0);
     return color;
 }
 
-void vx__rgba8888_to_rgbaf32(unsigned int rgba8888, float (*rgbaf32)[4])
+void vx__abgr8888_to_rgbaf32(unsigned int abgr8888, float (*rgbaf32)[4])
 {
-    (*rgbaf32)[0] = ((rgba8888 >> 24) & 0xff) / 255.0f;
-    (*rgbaf32)[1] = ((rgba8888 >> 16) & 0xff) / 255.0f;
-    (*rgbaf32)[2] = ((rgba8888 >>  8) & 0xff) / 255.0f;
-    (*rgbaf32)[3] = ((rgba8888 >>  0) & 0xff) / 255.0f;
+    (*rgbaf32)[0] = ((abgr8888 >>  0) & 0xff) / 255.0f;
+    (*rgbaf32)[1] = ((abgr8888 >>  8) & 0xff) / 255.0f;
+    (*rgbaf32)[2] = ((abgr8888 >> 16) & 0xff) / 255.0f;
+    (*rgbaf32)[3] = ((abgr8888 >> 24) & 0xff) / 255.0f;
 }
 
-unsigned int vx__mix05(unsigned int rgba88880,
-    unsigned int rgba88881)
+unsigned int vx__mix05(unsigned int abgr88880,
+    unsigned int abgr88881)
 {
     float rgba0[4];
     float rgba1[4];
     float out[4];
 
-    vx__rgba8888_to_rgbaf32(rgba88880, &rgba0);
-    vx__rgba8888_to_rgbaf32(rgba88881, &rgba1);
+    vx__abgr8888_to_rgbaf32(abgr88880, &rgba0);
+    vx__abgr8888_to_rgbaf32(abgr88881, &rgba1);
 
     for (int i = 0; i < 4; ++i) {
         out[i] = rgba0[i] * 0.5f + rgba1[i] * 0.5f;
     }
 
-    return vx__rgbaf32_to_rgba8888(out);
+    return vx__rgbaf32_to_abgr8888(out);
 }
 
 vx_vec3_t vx__mix05(vx_vec3_t v0, vx_vec3_t v1)
@@ -1093,7 +1093,7 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* m,
 
         VX_ASSERT(ix + iy * width + iz * (width * height) < width * height * depth);
 
-        color = vx__rgbaf32_to_rgba8888(rgba);
+        color = vx__rgbaf32_to_abgr8888(rgba);
         index = ix + iy * width + iz * (width * height);
 
         if (data[index] != 0) {
