@@ -107,6 +107,13 @@ vx_mesh_t* vx_voxelize(vx_mesh_t const* mesh,       // The input mesh
         float precision);                           // A precision factor that reduces "holes" artifact
                                                     // usually a precision = voxelsize / 10. works ok.
 
+static vx_vec3_t(*vx__texture_insert)(vx_vec3_t, vx_vec3_t, vx_vec3_t) = NULL;
+
+static void vx_set_voxel_texture_insert_callback(vx_vec3_t(*textureinsert)(vx_vec3_t, vx_vec3_t, vx_vec3_t))
+{
+    vx__texture_insert = textureinsert;
+}
+
 // vx_voxelize_snap_3d_grid: Voxelizes a triangle mesh to a 3d texture
 // The texture data is aligned as RGBA8 and can be uploaded as a 3d texture with OpenGL like so:
 // glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, width, height, depth, 0, GL_RGBA, GL_UNSIGNED_BYTE, texturedata);
@@ -114,7 +121,6 @@ unsigned int* vx_voxelize_snap_3dgrid(vx_mesh_t const* mesh, // The input mesh
         unsigned int width,                                  // The texture resolution on x-axis
         unsigned int height,                                 // The texture resolution on y-axis
         unsigned int depth);                                 // The texture resolution on z-axis
-
 
 // Allocates a mesh that can contain nvertices vertices, nindices indices
 vx_mesh_t* vx_mesh_alloc(int nvertices, int nindices);
@@ -869,6 +875,10 @@ vx_hash_table_t* vx__voxelize(vx_mesh_t const* m,
                         triangle.normals[0],
                         triangle.normals[1],
                         triangle.normals[2]);
+
+                    if (vx__texture_insert) {
+                        color = (*vx__texture_insert)(color, normal, boxcenter);
+                    }
 
                     nodedata->color = color;
                     nodedata->normal = normal;
