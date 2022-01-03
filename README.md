@@ -36,11 +36,3 @@ result = vx_voxelize(mesh, 0.025, 0.025, 0.025, precision);
 vx_mesh_free(result);
 vx_mesh_free(mesh);
 ```
-
-**TODO**
-
-- Colorized output mesh (from input mesh)
-- Hidden voxel removal
-- Triangle face merging
-- Option for input triangle ordering (right now only supports GL_TRIANGLES indexed triangles)
-- Option for output format
